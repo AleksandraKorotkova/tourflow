@@ -1,0 +1,118 @@
+# Конфигурация системы сбора данных
+# Все параметры, зависящие от предметной области, вынесены сюда.
+
+region:
+  # Как регион называется в файлах Росстата.
+  # Внимание: с 2026 г. подпись содержит сноску ("Краснодарский край 2"),
+  # поэтому сопоставление идёт по префиксу.
+  rosstat_name: "Краснодарский край"
+  # Опорная точка для погоды. Сочи — основной курортный центр края.
+  weather_points:
+    - name: sochi
+      latitude: 43.60
+      longitude: 39.73
+    - name: anapa
+      latitude: 44.89
+      longitude: 37.32
+
+period:
+  # Начало сбора внешних факторов.
+  # Берём с 2010 г., чтобы хватило истории для расчёта климатической нормы.
+  start: "2010-01-01"
+  # Конец берётся как последний завершённый месяц, если не задан явно.
+  end: null
+
+storage:
+  # База данных должна существовать заранее — создайте её в DBeaver:
+  # правой кнопкой по соединению → Create New Database → имя "tourflow".
+  # Таблицы внутри неё программа создаст сама при первом запуске.
+  # Параметры ниже посмотрите в DBeaver: клик по соединению правой
+  # кнопкой → Edit Connection → вкладка Main.
+  postgres:
+    host: "localhost"
+    port: 5432
+    dbname: "tourflow"
+    user: "postgres"
+    password: "пароль"
+  raw_dir: "data/raw"
+
+sources:
+  rosstat:
+    enabled: true
+    # Файл скачивается вручную с https://rosstat.gov.ru/statistics/turizm
+    # (раздел "Средства размещения", месяцы с 2022 г.)
+    file: "data/raw/SR_mes_sub.xlsx"
+    # Листы: префикс показателя -> человекочитаемое имя
+    indicators:
+      "1": placed_total
+      "1.1": placed_russian
+      "1.2": placed_foreign
+      "2": nights_total
+      "3": revenue_total
+      "4": placed_sanatorium
+      "5": nights_sanatorium
+      "6": revenue_sanatorium
+
+  weather:
+    enabled: true
+    base_url: "https://archive-api.open-meteo.com/v1/archive"
+    daily:
+      - temperature_2m_mean
+      - temperature_2m_max
+      - precipitation_sum
+      - sunshine_duration
+    timezone: "Europe/Moscow"
+
+  cbr:
+    enabled: true
+    base_url: "https://www.cbr.ru/scripts/XML_dynamic.asp"
+    currencies:
+      USD: "R01235"
+      EUR: "R01239"
+      TRY: "R01700J"   # турецкая лира — прокси конкурирующего направления
+
+  calendar:
+    enabled: true
+    base_url: "https://isdayoff.ru/api/getdata"
+    country: "ru"
+
+network:
+  timeout_seconds: 30
+  max_retries: 4
+  backoff_seconds: 2.0
+  # Пауза между запросами, чтобы не упереться в ограничение частоты
+  delay_seconds: 0.4
+
+# ---------------------------------------------------------------------------
+# Анализ и прогнозирование (модули analysis.py и forecasting.py)
+# ---------------------------------------------------------------------------
+analysis:
+  # Откуда брать месячную витрину: csv — из файла, postgres — собрать из базы.
+  source: csv
+  mart_csv: "data/monthly.csv"
+  output_dir: "output"
+
+  # Прогнозируемый показатель (столбец витрины) и его подпись на графиках.
+  target: placed_total
+  target_label: "Размещённые в КСР, чел."
+
+  # Внешние факторы, которые сопоставляются с остатками сезонной модели.
+  factors:
+    - nonworking_dev
+    - fx_usd_yoy
+    - sochi_rainy_days_anom
+    - sochi_sunshine_h_anom
+    - anapa_sunshine_h_anom
+    - anapa_temp_mean_anom
+
+  # Порог аномалии: робастный z-score по модулю.
+  anomaly_threshold: 2.5
+
+  forecast:
+    horizon: 6            # на сколько месяцев вперёд прогнозировать
+    initial_train: 30     # длина первого обучающего окна скользящей проверки
+    interval_level: 0.90  # уровень доверительного интервала
+    fx_lag: 7             # сдвиг курса валюты, месяцев
+    calendar_factors: [nonworking_dev]
+    fx_factors: [fx_usd_yoy]
+    weather_factors: [sochi_rainy_days_anom, anapa_sunshine_h_anom]
