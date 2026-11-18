@@ -283,7 +283,7 @@ def show_journal(store: Storage, limit: int = 20) -> None:
 
 
 def collect(config: dict, only: list[str] | None = None, full: bool = False,
-            journal_only: bool = False) -> int:
+            journal_only: bool = False, *, run_id: str | None = None) -> int:
     """Выполнить сбор данных. Возвращает код завершения (0 — успех)."""
     try:
         store = Storage(config["storage"]["postgres"])
@@ -299,7 +299,7 @@ def collect(config: dict, only: list[str] | None = None, full: bool = False,
             show_journal(store)
             return 0
 
-        run_id = uuid.uuid4().hex
+        run_id = run_id or uuid.uuid4().hex
         log.info("Запуск %s, период до %s", run_id[:8], config["period"]["end"])
 
         selected = only or list(RUNNERS)

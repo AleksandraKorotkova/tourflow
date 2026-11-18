@@ -87,7 +87,7 @@ def step_build(config: dict, csv_path: Path) -> int:
 
 
 def step_analyze(config: dict, csv_path: Path, out_dir: Path,
-                 horizon: int | None) -> int:
+                 horizon: int | None, *, summary: dict | None = None) -> int:
     """Обработка -> анализ -> прогнозирование -> визуализация -> выводы."""
     settings = config["analysis"]
     target = settings["target"]
@@ -220,7 +220,11 @@ def step_analyze(config: dict, csv_path: Path, out_dir: Path,
     print("\nВыводы:")
     for line in conclusions:
         print(f"  • {line}")
-    print(f"\nРезультаты: {out_dir}  (графиков: {len(figures)})")
+    if summary is None:
+        print(f"\nРезультаты: {out_dir}  (графиков: {len(figures)})")
+    else:
+        print(f"\nГрафиков построено: {len(figures)}")
+        summary.update(best_model=result.best, interval_level=fsettings.interval_level)
     return 0
 
 
